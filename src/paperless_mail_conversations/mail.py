@@ -33,6 +33,35 @@ def message_ids(value: str | None) -> list[str]:
     return _MSGID.findall(value or "")
 
 
+def from_header_first(raw: bytes) -> bytes:
+    """The same message with its ``From`` header (with continuation lines) moved to the top.
+
+    Paperless picks the parser by libmagic, which reads a message starting with
+    ``MIME-Version:`` (e.g. one sent from Gmail) as ``text/plain``; a leading
+    ``From:`` makes it ``message/rfc822``. Paperless' own mail import does the
+    same (``paperless_mail/mail.py``, ``_process_eml``). Header order carries no
+    meaning (RFC 5322, DKIM), the bytes of every header and the body stay as they are.
+    """
+    end = raw.find(b"\r\n\r\n")
+    end = end if end != -1 else raw.find(b"\n\n")
+    if end == -1:
+        return raw
+    head, rest = raw[:end], raw[end:]
+    nl = b"\r\n" if head.find(b"\r\n") != -1 else b"\n"
+    lines = head.split(nl)
+    fields: list[list[bytes]] = []
+    for line in lines:
+        if line[:1] in (b" ", b"\t") and fields:
+            fields[-1].append(line)
+        else:
+            fields.append([line])
+    index = next((i for i, f in enumerate(fields) if f[0].lower().startswith(b"from:")), None)
+    if not index:  # absent, or already first
+        return raw
+    fields.insert(0, fields.pop(index))
+    return nl.join(line for f in fields for line in f) + rest
+
+
 def addresses(value: str | None) -> list[str]:
     """Bare lower-case addresses from an address header."""
     return [a.lower() for _, a in getaddresses([value or ""]) if a]

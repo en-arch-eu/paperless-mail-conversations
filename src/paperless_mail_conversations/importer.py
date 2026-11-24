@@ -28,7 +28,7 @@ from django.utils.crypto import get_random_string
 from . import fields as F
 from .fields import FieldDef
 from .links import MAX_DEPTH, Kind, relation
-from .mail import Attachment, Mail, parse_mail
+from .mail import Attachment, Mail, from_header_first, parse_mail
 from .policy import Decision, Rule, Scope, decide
 
 logger = logging.getLogger("paperless.mail_conversations")
@@ -234,6 +234,10 @@ def import_mail(raw: bytes, ctx: Context, source: Source = Source(), depth: int 
         after_mail(same_file, ctx, depth, forwarded_by)
         return same_file
 
+    import magic
+
+    if magic.from_buffer(raw, mime=True) != "message/rfc822":
+        raw = from_header_first(raw)  # or Paperless would parse it as plain text
     title = mail.subject or "(no subject)"
     _consume(
         raw,

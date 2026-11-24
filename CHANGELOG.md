@@ -24,3 +24,7 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`task_postrun` of `process_mail_accounts`) and with
   `manage.py mail_conversations_sync`. Storage path for imported documents:
   `PAPERLESS_MAIL_CONVERSATIONS_STORAGE_PATH` (id); owner: the mail account's owner.
+- A mail that libmagic reads as `text/plain` (e.g. sent from Gmail: it starts
+  with `MIME-Version:`) gets its `From` header moved to the top before
+  consumption, as Paperless' own mail import does; otherwise Paperless would
+  store it as plain text without the PDF rendering.

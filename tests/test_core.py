@@ -6,7 +6,7 @@ import pytest
 
 from paperless_mail_conversations import fields as F
 from paperless_mail_conversations.links import Kind, Relation, relation
-from paperless_mail_conversations.mail import Attachment, normalize_message_id, parse_mail
+from paperless_mail_conversations.mail import Attachment, from_header_first, normalize_message_id, parse_mail
 from paperless_mail_conversations.policy import Decision, Rule, Scope, decide
 
 DATA = Path(__file__).parent / "data"
@@ -221,3 +221,25 @@ def test_rules_in_order_mime_and_scope_all():
 def test_skipped_by_owner_wins():
     pdf = att("faktura.pdf", "application/pdf")
     assert decide(pdf, Scope.MARKED, skipped={pdf.sha256}) is Decision.SKIP
+
+
+# --- From header first ------------------------------------------------------
+
+
+def test_from_header_moved_to_top_with_continuation_lines():
+    raw = (
+        b"MIME-Version: 1.0\r\nSubject: s\r\nFrom: =?UTF-8?Q?Jan?=\r\n <jan@example.org>\r\n"
+        b"To: a@x\r\n\r\nFrom: not a header\r\n"
+    )
+    out = from_header_first(raw)
+    assert out == (
+        b"From: =?UTF-8?Q?Jan?=\r\n <jan@example.org>\r\nMIME-Version: 1.0\r\nSubject: s\r\n"
+        b"To: a@x\r\n\r\nFrom: not a header\r\n"
+    )
+    assert sorted(out) == sorted(raw)  # same bytes, other order
+    assert parse_mail(out).from_ == parse_mail(raw).from_
+
+
+@pytest.mark.parametrize("raw", [b"From: a@x\nTo: b@x\n\nbody\n", b"To: b@x\n\nbody\n", b"no body separator"])
+def test_from_header_first_unchanged(raw):
+    assert from_header_first(raw) == raw
