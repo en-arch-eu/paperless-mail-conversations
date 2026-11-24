@@ -1,15 +1,23 @@
-"""Import every message of the marked conversations of the Paperless mail accounts."""
+"""Mailbox side: marked conversations after every mail fetch, and the one-time backfill."""
 
 from __future__ import annotations
 
 import logging
 import os
+from collections import Counter
+from contextlib import contextmanager
+from pathlib import PurePosixPath
 
 from django.utils import timezone
 
-from .importer import Context, Source, ensure_fields, find_documents, import_mail
 from . import fields as F
-from .policy import Scope
+from .importer import (
+    Context, Source, custom_field, document_with_checksum, ensure_fields, find_documents, import_mail, set_value,
+    get_value,
+)
+from .mail import parse_mail
+from .plan import plan_attachments
+from .policy import Decision, Scope, decide
 from .providers import provider_for
 
 logger = logging.getLogger("paperless.mail_conversations")
@@ -20,26 +28,54 @@ def storage_path_id() -> int | None:
     return int(value) if value else None
 
 
-def sync_account(account) -> int:
-    """Queue the messages of marked conversations that are not in Paperless; returns how many."""
+def account_context(account, scope: Scope) -> Context:
+    return Context(
+        account_name=account.name,
+        account_address=account.username,
+        scope=scope,
+        owner_id=account.owner_id,
+        storage_path_id=storage_path_id(),
+    )
+
+
+@contextmanager
+def open_mailbox(account):
+    """Logged-in mailbox and its provider (``None`` when no provider supports it)."""
     from paperless_mail.mail import get_mailbox, mailbox_login
     from paperless_mail.oauth import PaperlessMailOAuth2Manager
 
-    ensure_fields()
-    queued = 0
     with get_mailbox(account.imap_server, account.imap_port, account.imap_security) as M:
         if account.is_token and account.expiration is not None and account.expiration < timezone.now():
             if not PaperlessMailOAuth2Manager().refresh_account_oauth_token(account):
-                logger.error("[mail-conversations] %s: cannot refresh the OAuth token", account)
-                return 0
+                raise RuntimeError(f"{account}: cannot refresh the OAuth token")
             account.refresh_from_db()
         provider = provider_for(M)
+        if provider is not None:
+            mailbox_login(M, account)
+            provider.open(M)
+        yield M, provider
+
+
+def known_keys() -> set[str]:
+    from documents.models import CustomFieldInstance
+
+    return set(
+        CustomFieldInstance.objects.filter(field=custom_field(F.KEY), document__deleted_at__isnull=True)
+        .values_list("value_text", flat=True)
+    )
+
+
+def sync_account(account) -> int:
+    """Queue the messages of marked conversations that are not in Paperless; returns how many."""
+    from .models import current_rules
+    from .reconcile import reconcile_mail
+
+    ensure_fields()
+    queued = 0
+    with open_mailbox(account) as (M, provider):
         if provider is None:
             logger.debug("[mail-conversations] %s: no conversation provider", account)
             return 0
-        mailbox_login(M, account)
-        provider.open(M)
-
         marked = provider.marked(M)
         conversations = {}
         for ref in marked:
@@ -51,16 +87,18 @@ def sync_account(account) -> int:
             "[mail-conversations] %s: %d marked message(s), %d conversation(s)",
             account, len(marked), len(conversations),
         )
-
-        ctx = Context(
-            account_name=account.name,
-            account_address=account.username,
-            scope=Scope.MARKED,
-            owner_id=account.owner_id,
-            storage_path_id=storage_path_id(),
-        )
+        ctx = account_context(account, Scope.MARKED)
         for refs in conversations.values():
-            missing = [r for r in refs if not find_documents(F.KEY, r.message_key)]
+            missing = []
+            for ref in refs:
+                docs = find_documents(F.KEY, ref.message_key)
+                if not docs:
+                    missing.append(ref)
+                elif get_value(docs[0], F.SCOPE) == Scope.BACKFILL.value:
+                    # came with the backfill, now in a marked conversation: the marked policy applies
+                    set_value(docs[0], F.SCOPE, Scope.MARKED.value)
+                    for line in reconcile_mail(docs[0], current_rules()):
+                        logger.info("[mail-conversations] %s", line)
             if not missing:
                 continue
             bodies = provider.fetch(M, missing)
@@ -86,3 +124,49 @@ def sync_all() -> int:
         except Exception:
             logger.exception("[mail-conversations] %s: sync failed", account)
     return total
+
+
+def backfill_account(account, query: str, limit: int | None, dry_run: bool, report=print) -> Counter:
+    """Import the messages matching ``query`` that are not in Paperless yet (oldest first),
+    with the backfill policy. ``dry_run``: only count, nothing is written anywhere."""
+    from .models import current_rules
+
+    ensure_fields()
+    stats: Counter = Counter()
+    rules = current_rules()
+    with open_mailbox(account) as (M, provider):
+        if provider is None:
+            raise RuntimeError(f"{account}: no conversation provider")
+        refs = provider.search(M, query)
+        known = known_keys()
+        missing = [r for r in refs if r.message_key not in known]
+        stats["found"], stats["already in Paperless"] = len(refs), len(refs) - len(missing)
+        if limit is not None:
+            missing = missing[:limit]
+        ctx = account_context(account, Scope.BACKFILL)
+        for i in range(0, len(missing), 50):
+            chunk = missing[i : i + 50]
+            bodies = provider.fetch(M, chunk)
+            for ref in chunk:
+                raw = bodies.get(ref.uid)
+                if raw is None:
+                    stats["no body"] += 1
+                    continue
+                stats["mails"] += 1
+                if dry_run:
+                    mail = parse_mail(raw)
+                    plan = plan_attachments(mail.attachments, Scope.BACKFILL, rules)
+                    stats["attachments in mails"] += len(mail.attachments)
+                    for att in mail.attachments:
+                        if decide(att, Scope.BACKFILL, rules) is Decision.SKIP:
+                            kind = "embedded image" if att.embedded else (PurePosixPath(att.filename or "").suffix.lower() or att.mime_type)
+                            stats[f"skipped: {kind}"] += 1
+                    stats["attached mails"] += len(plan.mails)
+                    for att in plan.files:
+                        stats["files linked (in Paperless)" if document_with_checksum(att.sha256) else "files imported (new)"] += 1
+                    report(f"  {mail.date:%Y-%m-%d} {mail.subject[:70]!r}: {len(plan.files)} file(s)" if mail.date else f"  {mail.subject[:70]!r}")
+                    continue
+                if import_mail(raw, ctx, Source(ref.message_key, ref.conversation_key, ref.web_link)) is None:
+                    stats["queued"] += 1
+                provider.mark_imported(M, ref)
+    return stats

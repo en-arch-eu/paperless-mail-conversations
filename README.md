@@ -67,7 +67,32 @@ creates the account in the dev instance from `GMAIL_ADDRESS` and
 `GMAIL_APP_PASSWORD` (a Google app password); then label a thread
 `do-paperless` and run `mail_conversations_sync` as the `paperless` user.
 
-The attachment policy is edited in the Django admin (`/admin`, *Attachment rules*).
+- `manage.py mail_conversations_backfill --account NAME [--query "has:attachment"] [--limit N] [--dry-run] [-v 2]`:
+  one-time import of old mails (oldest first) with the backfill policy;
+  attachments already in Paperless (same SHA256) are only linked. The
+  messages get the `w-paperless` label; their conversations are not watched.
+  `--dry-run` only counts (nothing written to Paperless or the mailbox), with
+  the skipped attachments by type.
+- `manage.py mail_conversations_reconcile [--dry-run] [--pattern '*.jpg'] [--document ID]`:
+  re-apply the attachment policy to the mails in Paperless (from their `.eml`):
+  import, link or restore from the trash what should be a document; move to
+  the trash documents made from attachments (`Mail: z załącznika`) that
+  should not be, unless another mail needs them. Documents that were in
+  Paperless before are never touched.
+
+The attachment policy is edited in the Django admin (`/admin`, *Attachment
+rules*). Each mail records its policy scope in `Mail: zakres` (`oznaczone` or
+`zaległości`); a backfilled mail that later shows up in a marked conversation
+is switched to `oznaczone` and reconciled. Deleting a document made from an
+attachment records its SHA256 in the mail's `Mail: pominięte załączniki`, so
+reconcile does not bring it back (delete the line to undo).
+
+ZIP attachments are not documents: their files are (same policy, nested ZIPs
+up to 3 levels, names without the UTF-8 flag read as cp852). A ZIP that cannot
+be read (encrypted, damaged, over 1000 files or 500 MB) stays one document.
+
+Images without DPI information (common in mail) need `PAPERLESS_OCR_IMAGE_DPI`
+set, or Paperless rejects them.
 
 ## License
 

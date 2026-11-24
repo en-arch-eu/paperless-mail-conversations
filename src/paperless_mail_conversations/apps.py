@@ -24,7 +24,13 @@ class MailConversationsConfig(AppConfig):
     def ready(self) -> None:
         from celery.signals import task_postrun
 
+        from django_softdelete.signals import post_soft_delete
+        from documents.models import Document
+
+        from .reconcile import on_document_soft_delete
+
         task_postrun.connect(_after_mail_fetch, weak=False, dispatch_uid="mail_conversations_after_fetch")
+        post_soft_delete.connect(on_document_soft_delete, sender=Document, weak=False, dispatch_uid="mail_conversations_soft_delete")
         logger.info("[mail-conversations] loaded, version %s", __version__)
 
 

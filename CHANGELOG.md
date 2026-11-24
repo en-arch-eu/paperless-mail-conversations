@@ -28,3 +28,11 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with `MIME-Version:`) gets its `From` header moved to the top before
   consumption, as Paperless' own mail import does; otherwise Paperless would
   store it as plain text without the PDF rendering.
+- `Mail: zakres` (policy scope of the mail); backfilled mails in a marked
+  conversation switch to `oznaczone` and are reconciled.
+- ZIP attachments expanded: their files become documents, the ZIP does not.
+- `manage.py mail_conversations_backfill` (with `--dry-run` statistics) and
+  `manage.py mail_conversations_reconcile`; documents made from attachments
+  are restored from the trash when the policy wants them again.
+- Deleting a document made from an attachment records its SHA256 in
+  `Mail: pominięte załączniki` of its mails.

@@ -29,7 +29,8 @@ from . import fields as F
 from .fields import FieldDef
 from .links import MAX_DEPTH, Kind, relation
 from .mail import Attachment, Mail, from_header_first, parse_mail
-from .policy import Decision, Rule, Scope, decide
+from .plan import plan_attachments
+from .policy import Rule, Scope
 
 logger = logging.getLogger("paperless.mail_conversations")
 
@@ -106,8 +107,12 @@ def overrides_fields(values: dict[FieldDef, object]) -> dict[int, object]:
 def get_value(doc_id: int, fd: FieldDef):
     from documents.models import CustomFieldInstance
 
-    inst = CustomFieldInstance.objects.filter(document_id=doc_id, field=custom_field(fd)).first()
-    return getattr(inst, _value_name(fd)) if inst else None
+    cf = custom_field(fd)
+    inst = CustomFieldInstance.objects.filter(document_id=doc_id, field=cf).first()
+    value = getattr(inst, _value_name(fd)) if inst else None
+    if fd.data_type == "select" and value is not None:  # stored id -> label
+        return next((o["label"] for o in cf.extra_data["select_options"] if o["id"] == value), None)
+    return value
 
 
 def set_value(doc_id: int, fd: FieldDef, value) -> None:
@@ -225,6 +230,7 @@ def import_mail(raw: bytes, ctx: Context, source: Source = Source(), depth: int 
         conversation_key=source.conversation_key,
         web_link=source.web_link,
     )
+    values[F.SCOPE] = ctx.scope.value
     same_file = document_with_checksum(sha)
     if same_file:
         # the .eml is already a document (e.g. a file from disk): it becomes the mail
@@ -295,36 +301,48 @@ def after_mail(doc_id: int, ctx: Context, depth: int = 0, forwarded_by: int | No
 
 
 def handle_attachments(doc_id: int, mail: Mail, ctx: Context, depth: int, rules: list[Rule]) -> None:
+    plan = plan_attachments(mail.attachments, ctx.scope, rules, F.parse_skipped(get_value(doc_id, F.SKIPPED)))
+    conversation = get_value(doc_id, F.CONVERSATION)
+    for att in plan.mails:
+        if depth + 1 > MAX_DEPTH:
+            logger.warning("[mail-conversations] #%s: attached mail deeper than %s, skipped", doc_id, MAX_DEPTH)
+            continue
+        import_mail(att.content, ctx, Source(), depth + 1, forwarded_by=doc_id)
+    for att in plan.files:
+        attach_file(doc_id, att, ctx, conversation)
+
+
+def attach_file(mail_doc_id: int, att: Attachment, ctx: Context, conversation: str | None) -> str:
+    """Link the document with the attachment's content, restoring it from the trash
+    or importing it when needed. Returns what was done: linked, restored or queued."""
+    from documents.models import Document
+
     from .tasks import attachment_consumed
 
-    skipped = F.parse_skipped(get_value(doc_id, F.SKIPPED))
-    conversation = get_value(doc_id, F.CONVERSATION)
-    for att in mail.attachments:
-        if decide(att, ctx.scope, rules, skipped) is not Decision.DOCUMENT:
-            continue
-        if att.is_message:
-            if depth + 1 > MAX_DEPTH:
-                logger.warning("[mail-conversations] #%s: attached mail deeper than %s, skipped", doc_id, MAX_DEPTH)
-                continue
-            import_mail(att.content, ctx, Source(), depth + 1, forwarded_by=doc_id)
-            continue
-        existing = document_with_checksum(att.sha256)
-        if existing:
-            link_attachment(doc_id, existing, conversation)
-            continue
-        values: dict[FieldDef, object] = {F.ATTACHMENT: [doc_id], F.FROM_ATTACHMENT: True}
-        if conversation:
-            values[F.CONVERSATION] = conversation
-        _consume(
-            att.content,
-            _attachment_filename(att),
-            {
-                "custom_fields": overrides_fields(values),
-                "owner_id": ctx.owner_id,
-                "storage_path_id": ctx.storage_path_id,
-            },
-            attachment_consumed.s(mail_doc_id=doc_id, conversation=conversation),
-        )
+    existing = document_with_checksum(att.sha256)
+    if existing:
+        link_attachment(mail_doc_id, existing, conversation)
+        return "linked"
+    trashed = Document.deleted_objects.filter(checksum=att.sha256).order_by("pk").first()
+    if trashed is not None:
+        trashed.restore(strict=False)
+        logger.info("[mail-conversations] #%s restored from the trash for #%s", trashed.pk, mail_doc_id)
+        link_attachment(mail_doc_id, trashed.root_document_id or trashed.pk, conversation)
+        return "restored"
+    values: dict[FieldDef, object] = {F.ATTACHMENT: [mail_doc_id], F.FROM_ATTACHMENT: True}
+    if conversation:
+        values[F.CONVERSATION] = conversation
+    _consume(
+        att.content,
+        _attachment_filename(att),
+        {
+            "custom_fields": overrides_fields(values),
+            "owner_id": ctx.owner_id,
+            "storage_path_id": ctx.storage_path_id,
+        },
+        attachment_consumed.s(mail_doc_id=mail_doc_id, conversation=conversation),
+    )
+    return "queued"
 
 
 def _attachment_filename(att: Attachment) -> str:

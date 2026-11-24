@@ -45,6 +45,10 @@ class Provider:
         """All messages of the conversation of ``ref`` (``[ref]`` without conversations)."""
         return [ref]
 
+    def search(self, mailbox, query: str) -> list[MessageRef]:
+        """Messages matching a provider-specific query (used by the backfill)."""
+        raise NotImplementedError(f"{self.name}: no search")
+
     def fetch(self, mailbox, refs: list[MessageRef]) -> dict[str, bytes]:
         """Raw messages by UID, without setting \\Seen."""
         out: dict[str, bytes] = {}
@@ -142,7 +146,15 @@ class GmailProvider(Provider):
         return parse_search(data)
 
     def marked(self, mailbox) -> list[MessageRef]:
-        return self._refs(mailbox, self._search(mailbox, "X-GM-RAW", f'"label:{MARK_LABEL}"'))
+        return self.search(mailbox, f"label:{MARK_LABEL}")
+
+    def search(self, mailbox, query: str) -> list[MessageRef]:
+        """Messages matching a Gmail search query, oldest first."""
+        uids = self._search(mailbox, "X-GM-RAW", '"' + query.replace("\\", "\\\\").replace('"', '\\"') + '"')
+        refs: list[MessageRef] = []
+        for i in range(0, len(uids), 500):  # keep the FETCH command short
+            refs += self._refs(mailbox, uids[i : i + 500])
+        return refs
 
     def conversation(self, mailbox, ref: MessageRef) -> list[MessageRef]:
         thrid = ref.conversation_key.removeprefix("gmail:")

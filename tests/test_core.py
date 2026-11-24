@@ -129,7 +129,7 @@ def test_reply_to_same_as_from_is_left_out():
 
 def test_field_definitions():
     names = [f.name for f in F.ALL_FIELDS]
-    assert len(names) == len(set(names)) == 18
+    assert len(names) == len(set(names)) == 19
     assert F.DIRECTION.select_options == (F.RECEIVED, F.SENT)
     # "string" holds at most 128 characters in Paperless
     assert {f.name for f in F.ALL_FIELDS if f.data_type == "string"} == {

@@ -16,6 +16,8 @@ class FieldDef:
 
 RECEIVED = "odebrany"
 SENT = "wysłany"
+SCOPE_MARKED = "oznaczone"  # same labels as policy.Scope
+SCOPE_BACKFILL = "zaległości"
 
 FROM = FieldDef("Mail: od", "longtext")
 TO = FieldDef("Mail: do", "longtext")
@@ -30,6 +32,8 @@ IN_REPLY_TO = FieldDef("Mail: In-Reply-To", "longtext")
 CONVERSATION = FieldDef("Mail: konwersacja", "string")
 KEY = FieldDef("Mail: klucz", "string")
 LINK = FieldDef("Mail: link", "url")
+# which attachment policy applies to the mail; reconcile reads it
+SCOPE = FieldDef("Mail: zakres", "select", (SCOPE_MARKED, SCOPE_BACKFILL))
 
 ATTACHMENT = FieldDef("Mail: załącznik", "documentlink")
 REPLY = FieldDef("Mail: odpowiedź", "documentlink")
@@ -39,7 +43,7 @@ SKIPPED = FieldDef("Mail: pominięte załączniki", "longtext")
 
 ALL_FIELDS = (
     FROM, TO, CC, BCC, REPLY_TO, SENT_AT, DIRECTION, ACCOUNT, MESSAGE_ID, IN_REPLY_TO,
-    CONVERSATION, KEY, LINK, ATTACHMENT, REPLY, FORWARD, FROM_ATTACHMENT, SKIPPED,
+    CONVERSATION, KEY, LINK, SCOPE, ATTACHMENT, REPLY, FORWARD, FROM_ATTACHMENT, SKIPPED,
 )
 
 

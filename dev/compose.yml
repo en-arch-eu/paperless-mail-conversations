@@ -31,6 +31,7 @@ services:
       PAPERLESS_REDIS: redis://broker:6379
       PAPERLESS_TIKA_ENABLED: 1
       PAPERLESS_CONSUMER_DELETE_DUPLICATES: "true"  # as on the production instance
+      PAPERLESS_OCR_IMAGE_DPI: 300  # images without DPI (common in mail) are rejected otherwise
       PAPERLESS_TIKA_ENDPOINT: http://tika:9998
       PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
       PYTHONPATH: /plugins/paperless_mail_conversations-0.1.0-py3-none-any.whl
