@@ -17,3 +17,10 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   both sides (also when the reply was imported first), attached mails
   imported as mails (up to 3 levels).
 - `manage.py mail_conversations_import` for `.eml` files.
+- Conversation providers (entry point group `paperless_mail_conversations.providers`)
+  and the Gmail provider: threads with the label `do-paperless` are imported
+  whole, messages get the label `w-paperless`; bodies fetched with
+  `BODY.PEEK[]` (read state unchanged). Runs after every Paperless mail fetch
+  (`task_postrun` of `process_mail_accounts`) and with
+  `manage.py mail_conversations_sync`. Storage path for imported documents:
+  `PAPERLESS_MAIL_CONVERSATIONS_STORAGE_PATH` (id); owner: the mail account's owner.

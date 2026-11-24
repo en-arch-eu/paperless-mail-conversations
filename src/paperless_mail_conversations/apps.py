@@ -1,7 +1,8 @@
 """Django app for Paperless-ngx.
 
 Enable with ``PAPERLESS_APPS=paperless_mail_conversations.apps.MailConversationsConfig``.
-Signal handlers, tasks and the policy model are added in the integration step.
+After every run of Paperless' mail fetch (``process_mail_accounts``, every
+10 minutes by default) the app queues ``tasks.sync_conversations``.
 """
 
 from __future__ import annotations
@@ -21,4 +22,17 @@ class MailConversationsConfig(AppConfig):
     verbose_name = "Mail conversations"
 
     def ready(self) -> None:
+        from celery.signals import task_postrun
+
+        task_postrun.connect(_after_mail_fetch, weak=False, dispatch_uid="mail_conversations_after_fetch")
         logger.info("[mail-conversations] loaded, version %s", __version__)
+
+
+MAIL_FETCH_TASK = "paperless_mail.tasks.process_mail_accounts"
+
+
+def _after_mail_fetch(sender=None, task=None, **kwargs) -> None:
+    if getattr(task, "name", None) == MAIL_FETCH_TASK:
+        from .tasks import sync_conversations
+
+        sync_conversations.delay()

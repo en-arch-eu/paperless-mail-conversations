@@ -59,6 +59,13 @@ signature skipped.
 
 - `manage.py mail_conversations_import FILE.eml... [--account NAME] [--address ADDR] [--scope oznaczone|zaległości] [--owner ID] [--storage-path ID]`:
   import mails from files (no conversation provider; the key is the `Message-ID`).
+- `manage.py mail_conversations_sync [--account NAME]`: import the marked
+  conversations now (it also runs after every Paperless mail fetch).
+
+Gmail test against a real mailbox: `uv run dev/gmail_account.py gmail.env`
+creates the account in the dev instance from `GMAIL_ADDRESS` and
+`GMAIL_APP_PASSWORD` (a Google app password); then label a thread
+`do-paperless` and run `mail_conversations_sync` as the `paperless` user.
 
 The attachment policy is edited in the Django admin (`/admin`, *Attachment rules*).
 

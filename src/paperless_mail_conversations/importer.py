@@ -200,9 +200,22 @@ def import_mail(raw: bytes, ctx: Context, source: Source = Source(), depth: int 
     if known:
         doc_id = known[0]
         logger.info("[mail-conversations] %s already imported as #%s", key, doc_id)
+        if source.message_key and get_value(doc_id, F.KEY) != source.message_key:
+            # imported before without the provider (from a file, as an attachment): now it has one
+            set_value(doc_id, F.KEY, source.message_key)
+            for fd, value in ((F.CONVERSATION, source.conversation_key), (F.LINK, source.web_link)):
+                if value and not get_value(doc_id, fd):
+                    set_value(doc_id, fd, value)
         if forwarded_by:
             add_links(forwarded_by, F.FORWARD, [doc_id])
         return doc_id
+
+    # the next sync may run before this mail is consumed
+    from django.core.cache import cache
+
+    if not cache.add(f"mail-conversations:queued:{key}", 1, timeout=3600):
+        logger.info("[mail-conversations] %s already queued", key)
+        return None
 
     values = F.header_fields(
         mail,

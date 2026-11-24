@@ -42,3 +42,21 @@ def attachment_consumed(result, mail_doc_id: int, conversation: str | None = Non
         add_links(doc_id, F.ATTACHMENT, [mail_doc_id])  # the consumer set it on the attachment only
     else:
         link_attachment(mail_doc_id, doc_id, conversation)
+
+
+SYNC_LOCK = "mail-conversations:sync-lock"
+
+
+@shared_task
+def sync_conversations() -> str:
+    """Import the marked conversations of all mail accounts (queued after every mail fetch)."""
+    from django.core.cache import cache
+
+    from .sync import sync_all
+
+    if not cache.add(SYNC_LOCK, 1, timeout=30 * 60):
+        return "Skipped: already running."
+    try:
+        return f"Queued {sync_all()} mail(s)."
+    finally:
+        cache.delete(SYNC_LOCK)
