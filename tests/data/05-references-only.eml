@@ -1,0 +1,9 @@
+From: sklep@example.com
+To: jan@example.org
+Date: not a date
+Message-ID: <late-5@example.com>
+References: <orig-1@example.com> <reply-2@example.org>
+Subject: [Sklep] PD: zamówienie
+Content-Type: text/plain; charset=UTF-8
+
+Treść.

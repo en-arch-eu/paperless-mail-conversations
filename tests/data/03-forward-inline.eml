@@ -1,0 +1,25 @@
+From: Jan Testowy <jan@example.org>
+To: Anna <anna@example.net>
+Date: Thu, 05 Nov 2026 10:00:00 +0100
+Message-ID: <fwd-3@example.org>
+In-Reply-To: <orig-1@example.com>
+References: <orig-1@example.com>
+Subject: Fwd: Faktura za październik
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="m"
+
+--m
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Do wiadomości.
+
+---------- Forwarded message ---------
+From: Sklep <sklep@example.com>
+--m
+Content-Type: application/pdf; name="faktura październik.pdf"
+Content-Disposition: attachment; filename="=?UTF-8?Q?faktura_pa=C5=BAdziernik.pdf?="
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgZmFrdHVyYQ==
+--m--

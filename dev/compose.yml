@@ -1,0 +1,43 @@
+# Throwaway Paperless for testing the app. From the plugin directory:
+#   uv build
+#   docker compose -f dev/compose.yml --env-file dev/.env up -d
+# dev/.env (git-ignored) holds a random PAPERLESS_SECRET_KEY.
+# UI on http://localhost:8011 (admin / admin), stored files in dev/media.
+# Local test data only.
+#
+# The app is imported straight from the wheel (a zip) on PYTHONPATH, not
+# installed with pip: the custom init scripts run only after migrations,
+# and migrations already load PAPERLESS_APPS.
+# Tika and Gotenberg are needed by Paperless' mail parser (.eml -> PDF).
+name: paperless-mail-conversations-dev
+services:
+  broker:
+    image: docker.io/library/redis:8
+  gotenberg:
+    image: docker.io/gotenberg/gotenberg:8
+    command: ["gotenberg", "--chromium-disable-javascript=true", "--chromium-allow-list=file:///tmp/.*"]
+  tika:
+    image: docker.io/apache/tika:latest
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:${PAPERLESS_VERSION:-3.5.1}
+    depends_on: [broker, gotenberg, tika]
+    ports: ["8011:8000"]
+    volumes:
+      - ../dist:/plugins:ro
+      - ./media:/usr/src/paperless/media
+      - data:/usr/src/paperless/data
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+      PYTHONPATH: /plugins/paperless_mail_conversations-0.1.0-py3-none-any.whl
+      PAPERLESS_APPS: paperless_mail_conversations.apps.MailConversationsConfig
+      PAPERLESS_ADMIN_USER: admin
+      PAPERLESS_ADMIN_PASSWORD: admin
+      PAPERLESS_OCR_LANGUAGE: eng
+      PAPERLESS_URL: http://localhost:8011
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:?create dev/.env with PAPERLESS_SECRET_KEY}
+
+volumes:
+  data:

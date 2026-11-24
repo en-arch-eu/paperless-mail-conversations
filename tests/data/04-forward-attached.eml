@@ -1,0 +1,43 @@
+From: Anna <anna@example.net>
+To: Jan Testowy <jan@example.org>
+Date: Fri, 06 Nov 2026 09:30:00 +0000
+Message-ID: <att-4@example.net>
+Subject: umowa w załączniku
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: text/plain; charset=UTF-8
+
+Przesyłam maila z umową.
+--outer
+Content-Type: message/rfc822
+Content-Disposition: attachment
+
+From: Biuro <biuro@example.com>
+To: anna@example.net
+Date: Mon, 02 Nov 2026 12:00:00 +0100
+Message-ID: <inner-0@example.com>
+Subject: Umowa
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset=UTF-8
+
+Umowa do podpisu.
+--inner
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="umowa.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgdW1vd2E=
+--inner--
+
+--outer
+Content-Type: application/pdf; name="skan.pdf"
+Content-Disposition: inline; filename="skan.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgdW1vd2E=
+--outer--

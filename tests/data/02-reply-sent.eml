@@ -1,0 +1,13 @@
+From: Jan Testowy <JAN@example.org>
+To: faktury@example.com
+Bcc: archiwum@example.org
+Date: Wed, 04 Nov 2026 08:00:00 +0100
+Message-ID: <reply-2@example.org>
+In-Reply-To: <orig-1@example.com>
+References: <orig-1@example.com>
+Subject: Re: Faktura za październik
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Dziękuję, faktura doszła.

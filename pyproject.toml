@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "paperless-mail-conversations"
+dynamic = ["version"]
+description = "Paperless-ngx app that imports marked mail conversations and links each mail to its attachments, replies and forwards"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+# The core uses the standard library only. Django, imap-tools and the
+# Paperless modules are provided by the Paperless image.
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://github.com/en-arch-eu/paperless-mail-conversations"
+Changelog = "https://github.com/en-arch-eu/paperless-mail-conversations/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/paperless_mail_conversations/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/paperless_mail_conversations"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
