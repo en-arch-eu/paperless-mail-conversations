@@ -35,7 +35,32 @@ uv build                         # wheel for dev/compose.yml
 ```
 
 `dev/compose.yml` starts a throwaway Paperless 3.5.1 with the app loaded from
-the wheel (instructions in the file).
+the wheel (instructions in the file). Integration check with a sample
+conversation (run commands as the `paperless` user, the worker must be able
+to read the queued files):
+
+```sh
+uv run dev/samples.py            # dev/samples/*.eml and existing.pdf
+W=paperless-mail-conversations-dev-webserver-1
+curl -u admin:admin -F document=@dev/samples/existing.pdf http://localhost:8011/api/documents/post_document/
+docker cp dev/samples $W:/tmp/ && docker cp dev/dump.py $W:/tmp/
+docker exec -u paperless $W python3 manage.py mail_conversations_import --address jan@example.org /tmp/samples/02-reply.eml
+docker exec -u paperless $W python3 manage.py mail_conversations_import --address jan@example.org /tmp/samples/0[134]*.eml
+docker exec -u paperless $W python3 manage.py shell -c "exec(open('/tmp/dump.py').read())"
+```
+
+Expected: the reply, the forward and the original linked both ways
+(`Mail: odpowiedź`, `Mail: przekazanie`); `existing.pdf` linked, not imported
+again; the new PDFs imported with `Mail: z załącznika`; the attached mail
+imported as a mail linked by `Mail: przekazanie`; the embedded image and the
+signature skipped.
+
+## Commands
+
+- `manage.py mail_conversations_import FILE.eml... [--account NAME] [--address ADDR] [--scope oznaczone|zaległości] [--owner ID] [--storage-path ID]`:
+  import mails from files (no conversation provider; the key is the `Message-ID`).
+
+The attachment policy is edited in the Django admin (`/admin`, *Attachment rules*).
 
 ## License
 

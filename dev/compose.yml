@@ -8,16 +8,17 @@
 # The app is imported straight from the wheel (a zip) on PYTHONPATH, not
 # installed with pip: the custom init scripts run only after migrations,
 # and migrations already load PAPERLESS_APPS.
-# Tika and Gotenberg are needed by Paperless' mail parser (.eml -> PDF).
+# Tika and Gotenberg (versions as in Paperless 3.5.1 compose files) are needed
+# by Paperless' mail parser (.eml -> PDF); tika:latest answers 406.
 name: paperless-mail-conversations-dev
 services:
   broker:
     image: docker.io/library/redis:8
   gotenberg:
-    image: docker.io/gotenberg/gotenberg:8
+    image: docker.io/gotenberg/gotenberg:8.38
     command: ["gotenberg", "--chromium-disable-javascript=true", "--chromium-allow-list=file:///tmp/.*"]
   tika:
-    image: docker.io/apache/tika:latest
+    image: docker.io/apache/tika:3.3.1.0
   webserver:
     image: ghcr.io/paperless-ngx/paperless-ngx:${PAPERLESS_VERSION:-3.5.1}
     depends_on: [broker, gotenberg, tika]
