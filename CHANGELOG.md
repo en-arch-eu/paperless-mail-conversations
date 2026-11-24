@@ -5,6 +5,14 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-24
+
+### Removed
+
+- `PAPERLESS_MAIL_CONVERSATIONS_STORAGE_PATH` and `--storage-path` of
+  `mail_conversations_import`: imported documents get no storage path from
+  the app (set it later, or with a Paperless workflow).
+
 ## [0.1.0] - 2026-11-24
 
 First version, for Paperless-ngx 3.5.1.

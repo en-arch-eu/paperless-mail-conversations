@@ -43,7 +43,6 @@ class Context:
     account_address: str
     scope: Scope = Scope.MARKED
     owner_id: int | None = None
-    storage_path_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -253,7 +252,6 @@ def import_mail(raw: bytes, ctx: Context, source: Source = Source(), depth: int 
             "created": mail.date.date() if mail.date else None,
             "custom_fields": overrides_fields(values),
             "owner_id": ctx.owner_id,
-            "storage_path_id": ctx.storage_path_id,
         },
         mail_consumed.s(ctx=ctx, depth=depth, forwarded_by=forwarded_by),
     )
@@ -338,7 +336,6 @@ def attach_file(mail_doc_id: int, att: Attachment, ctx: Context, conversation: s
         {
             "custom_fields": overrides_fields(values),
             "owner_id": ctx.owner_id,
-            "storage_path_id": ctx.storage_path_id,
         },
         attachment_consumed.s(mail_doc_id=mail_doc_id, conversation=conversation),
     )

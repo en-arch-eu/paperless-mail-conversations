@@ -4,7 +4,7 @@ A Django app for [Paperless-ngx](https://github.com/paperless-ngx/paperless-ngx)
 that imports **marked mail conversations** and keeps each mail linked to its
 attachments, to the mail it answers and to the mail it forwards.
 
-**Status: first version (0.1.0), in use on one instance.** Written for
+**Status: early version, in use on one instance.** Written for
 Paperless-ngx **3.5.x**. Third-party extensions are not supported by the Paperless team; do
 not report problems with this app there.
 
@@ -47,13 +47,12 @@ Custom field names are in Polish (`Mail: od`, `Mail: załącznik`, ...); see
    ```
    PYTHONPATH=/plugins/paperless_mail_conversations.whl
    PAPERLESS_APPS=paperless_mail_conversations.apps.MailConversationsConfig
-   PAPERLESS_MAIL_CONVERSATIONS_STORAGE_PATH=<storage path id>   # optional
    ```
 
    On start a migration creates the attachment policy table with the default
    rules. Custom fields are created on first use.
 
-3. Check the log for `[mail-conversations] loaded, version 0.1.0`. From now on,
+3. Check the log for `[mail-conversations] loaded, version 0.1.1`. From now on,
    after every mail fetch, threads labelled `do-paperless` in the Gmail
    accounts configured in Paperless are imported (no mail rule needed).
 
@@ -97,7 +96,7 @@ signature skipped.
 
 ## Commands
 
-- `manage.py mail_conversations_import FILE.eml... [--account NAME] [--address ADDR] [--scope oznaczone|zaległości] [--owner ID] [--storage-path ID]`:
+- `manage.py mail_conversations_import FILE.eml... [--account NAME] [--address ADDR] [--scope oznaczone|zaległości] [--owner ID]`:
   import mails from files (no conversation provider; the key is the `Message-ID`).
 - `manage.py mail_conversations_sync [--account NAME]`: import the marked
   conversations now (it also runs after every Paperless mail fetch).

@@ -59,7 +59,6 @@ def mail_context(doc) -> Context:
         account_address=account.username if account else "",
         scope=Scope(scope) if scope else Scope.MARKED,
         owner_id=doc.owner_id,
-        storage_path_id=doc.storage_path_id,
     )
 
 

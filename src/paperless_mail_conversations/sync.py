@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections import Counter
 from contextlib import contextmanager
 from pathlib import PurePosixPath
@@ -23,18 +22,12 @@ from .providers import provider_for
 logger = logging.getLogger("paperless.mail_conversations")
 
 
-def storage_path_id() -> int | None:
-    value = os.environ.get("PAPERLESS_MAIL_CONVERSATIONS_STORAGE_PATH")
-    return int(value) if value else None
-
-
 def account_context(account, scope: Scope) -> Context:
     return Context(
         account_name=account.name,
         account_address=account.username,
         scope=scope,
         owner_id=account.owner_id,
-        storage_path_id=storage_path_id(),
     )
 
 
