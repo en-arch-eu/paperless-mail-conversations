@@ -191,6 +191,20 @@ def _consume(content: bytes, filename: str, overrides_kwargs: dict, then):
     transaction.on_commit(lambda: chain(consume_file.s(input_doc=input_doc, overrides=overrides), then).delay())
 
 
+QUEUED_TIMEOUT = 24 * 3600  # the consume queue can be hours long after a large marking
+
+
+def _queued(key: str) -> str:
+    return f"mail-conversations:queued:{key}"
+
+
+def is_queued(key: str) -> bool:
+    """The mail was queued and is not consumed yet (or failed less than a day ago)."""
+    from django.core.cache import cache
+
+    return cache.get(_queued(key)) is not None
+
+
 def import_mail(raw: bytes, ctx: Context, source: Source = Source(), depth: int = 0, forwarded_by: int | None = None) -> int | None:
     """Import one mail. Returns the document id when the mail is already in
     Paperless (it is then only linked), ``None`` when it was queued."""
@@ -217,7 +231,7 @@ def import_mail(raw: bytes, ctx: Context, source: Source = Source(), depth: int 
     # the next sync may run before this mail is consumed
     from django.core.cache import cache
 
-    if not cache.add(f"mail-conversations:queued:{key}", 1, timeout=3600):
+    if not cache.add(_queued(key), 1, timeout=QUEUED_TIMEOUT):
         logger.info("[mail-conversations] %s already queued", key)
         return None
 

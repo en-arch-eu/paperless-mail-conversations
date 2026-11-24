@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import Counter
 from contextlib import contextmanager
 from pathlib import PurePosixPath
@@ -11,8 +12,8 @@ from django.utils import timezone
 
 from . import fields as F
 from .importer import (
-    Context, Source, custom_field, document_with_checksum, ensure_fields, find_documents, import_mail, set_value,
-    get_value,
+    Context, Source, custom_field, document_with_checksum, ensure_fields, find_documents, import_mail, is_queued,
+    set_value,
 )
 from .mail import parse_mail
 from .plan import plan_attachments
@@ -58,62 +59,109 @@ def known_keys() -> set[str]:
     )
 
 
-def sync_account(account) -> int:
-    """Queue the messages of marked conversations that are not in Paperless; returns how many."""
+WATCH_QUERY = "newer_than:7d"  # new messages in conversations already imported
+TIME_BUDGET = 10 * 60  # seconds per sync, keeps the worker free for consuming; Paperless kills tasks after 30 min
+
+
+def backfill_keys() -> set[str]:
+    """Keys of mails imported with the backfill policy."""
+    from documents.models import CustomFieldInstance
+
+    scope = custom_field(F.SCOPE)
+    option = next(o["id"] for o in scope.extra_data["select_options"] if o["label"] == Scope.BACKFILL.value)
+    docs = CustomFieldInstance.objects.filter(field=scope, value_select=option, document__deleted_at__isnull=True)
+    return set(
+        CustomFieldInstance.objects.filter(field=custom_field(F.KEY), document_id__in=docs.values("document_id"))
+        .values_list("value_text", flat=True)
+    )
+
+
+def _import(M, provider, account, ctx: Context, refs: list) -> int:
+    """Fetch and queue ``refs``; returns how many were queued."""
+    queued = 0
+    bodies = provider.fetch(M, refs)
+    for ref in refs:
+        raw = bodies.get(ref.uid)
+        if raw is None:
+            logger.warning("[mail-conversations] %s: no body for UID %s", account, ref.uid)
+            continue
+        if import_mail(raw, ctx, Source(ref.message_key, ref.conversation_key, ref.web_link)) is None:
+            queued += 1
+        provider.mark_imported(M, ref)
+    return queued
+
+
+def sync_account(account, deadline: float | None = None) -> int:
+    """Queue the messages of marked conversations that are not in Paperless; returns how many.
+
+    A conversation with a marked message not in Paperless yet is looked up in full
+    (one search per conversation) and queued at once; past ``deadline`` the rest waits
+    for the next sync. New messages in conversations already imported are found with
+    one search of the recent messages."""
     from .models import current_rules
     from .reconcile import reconcile_mail
 
     ensure_fields()
-    queued = 0
     with open_mailbox(account) as (M, provider):
         if provider is None:
             logger.debug("[mail-conversations] %s: no conversation provider", account)
             return 0
         marked = provider.marked(M)
-        conversations = {}
+        known = known_keys()
+
+        def done(ref) -> bool:
+            return ref.message_key in known or is_queued(ref.message_key)
+
+        conversations: dict[str, list] = {}  # conversation -> its marked messages
         for ref in marked:
-            if ref.conversation_key is None:
-                conversations[ref.message_key] = [ref]
-            elif ref.conversation_key not in conversations:
-                conversations[ref.conversation_key] = provider.conversation(M, ref)
+            conversations.setdefault(ref.conversation_key or ref.message_key, []).append(ref)
+        new = {key: refs for key, refs in conversations.items() if not all(done(r) for r in refs)}
         logger.info(
-            "[mail-conversations] %s: %d marked message(s), %d conversation(s)",
-            account, len(marked), len(conversations),
+            "[mail-conversations] %s: %d marked message(s), %d conversation(s), %d new",
+            account, len(marked), len(conversations), len(new),
         )
         ctx = account_context(account, Scope.MARKED)
-        for refs in conversations.values():
-            missing = []
-            for ref in refs:
-                docs = find_documents(F.KEY, ref.message_key)
-                if not docs:
-                    missing.append(ref)
-                elif get_value(docs[0], F.SCOPE) == Scope.BACKFILL.value:
-                    # came with the backfill, now in a marked conversation: the marked policy applies
-                    set_value(docs[0], F.SCOPE, Scope.MARKED.value)
-                    for line in reconcile_mail(docs[0], current_rules()):
+        queued = 0
+
+        # came with the backfill, now in a marked conversation: the marked policy applies
+        backfilled = backfill_keys()
+        for ref in marked:
+            if ref.message_key in backfilled:
+                for doc_id in find_documents(F.KEY, ref.message_key):
+                    set_value(doc_id, F.SCOPE, Scope.MARKED.value)
+                    for line in reconcile_mail(doc_id, current_rules()):
                         logger.info("[mail-conversations] %s", line)
-            if not missing:
-                continue
-            bodies = provider.fetch(M, missing)
-            for ref in missing:
-                raw = bodies.get(ref.uid)
-                if raw is None:
-                    logger.warning("[mail-conversations] %s: no body for UID %s", account, ref.uid)
-                    continue
-                source = Source(ref.message_key, ref.conversation_key, ref.web_link)
-                if import_mail(raw, ctx, source) is None:
-                    queued += 1
-                provider.mark_imported(M, ref)
+
+        try:
+            recent = provider.search(M, WATCH_QUERY)
+        except NotImplementedError:
+            recent = []
+        replies = [
+            r for r in recent
+            if r.conversation_key in conversations and r.conversation_key not in new and not done(r)
+        ]
+        if replies:
+            queued += _import(M, provider, account, ctx, replies)
+
+        for i, refs in enumerate(new.values()):
+            if deadline is not None and time.monotonic() > deadline:
+                logger.info("[mail-conversations] %s: time is up, %d conversation(s) left for the next sync", account, len(new) - i)
+                break
+            members = provider.conversation(M, refs[0]) if refs[0].conversation_key else refs
+            missing = [r for r in members if not done(r)]
+            if missing:
+                queued += _import(M, provider, account, ctx, missing)
     return queued
 
 
 def sync_all() -> int:
     from paperless_mail.models import MailAccount
 
+    deadline = time.monotonic() + TIME_BUDGET
     total = 0
     for account in MailAccount.objects.all():
         try:
-            total += sync_account(account)
+            total += sync_account(account, deadline)
         except Exception:
             logger.exception("[mail-conversations] %s: sync failed", account)
     return total

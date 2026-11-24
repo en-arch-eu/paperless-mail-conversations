@@ -5,6 +5,20 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-24
+
+### Fixed
+
+- Marking many conversations at once (hundreds) blocked the Paperless worker:
+  the sync looked up every marked conversation before queueing anything and
+  was killed by the task time limit without importing a mail. Now only
+  conversations with a marked message not in Paperless are looked up, each is
+  queued at once, and a sync stops after 10 minutes (the rest comes with the
+  next one). New messages in conversations already imported are found with one
+  search of the last 7 days (`newer_than:7d`).
+- A queued mail is not queued again for 24 hours (was 1 hour), so a long
+  consume queue does not import mails twice.
+
 ## [0.1.1] - 2026-11-24
 
 ### Removed
