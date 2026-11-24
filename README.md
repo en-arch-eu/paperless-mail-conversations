@@ -4,11 +4,11 @@ A Django app for [Paperless-ngx](https://github.com/paperless-ngx/paperless-ngx)
 that imports **marked mail conversations** and keeps each mail linked to its
 attachments, to the mail it answers and to the mail it forwards.
 
-**Status: in development, not usable yet.** Written for Paperless-ngx
-**3.5.x**. Third-party extensions are not supported by the Paperless team; do
+**Status: first version (0.1.0), in use on one instance.** Written for
+Paperless-ngx **3.5.x**. Third-party extensions are not supported by the Paperless team; do
 not report problems with this app there.
 
-## What it does (planned)
+## What it does
 
 - A mail becomes one document (the original `.eml`, rendered by Paperless'
   mail parser), with custom fields from its headers: from, to, cc, bcc,
@@ -26,6 +26,46 @@ not report problems with this app there.
 
 Custom field names are in Polish (`Mail: od`, `Mail: załącznik`, ...); see
 `src/paperless_mail_conversations/fields.py`.
+
+## Installation (Docker / TrueNAS app)
+
+1. Put the update script in the host directory mounted as `/plugins` and run
+   it as root:
+
+   ```
+   cd /mnt/tank/apps/paperless/plugins
+   curl -fsSLO https://github.com/en-arch-eu/paperless-mail-conversations/releases/latest/download/update-mail-conversations.sh
+   chmod 755 update-mail-conversations.sh
+   ./update-mail-conversations.sh
+   ```
+
+   It downloads the latest wheel, checks it against `SHA256SUMS` and points
+   the stable link `paperless_mail_conversations.whl` at it.
+
+2. Add the app to the environment (`:` and `,` separate several apps) and restart:
+
+   ```
+   PYTHONPATH=/plugins/paperless_mail_conversations.whl
+   PAPERLESS_APPS=paperless_mail_conversations.apps.MailConversationsConfig
+   PAPERLESS_MAIL_CONVERSATIONS_STORAGE_PATH=<storage path id>   # optional
+   ```
+
+   On start a migration creates the attachment policy table with the default
+   rules. Custom fields are created on first use.
+
+3. Check the log for `[mail-conversations] loaded, version 0.1.0`. From now on,
+   after every mail fetch, threads labelled `do-paperless` in the Gmail
+   accounts configured in Paperless are imported (no mail rule needed).
+
+Run the commands as the `paperless` user (`docker exec -u paperless ...`), or
+the worker cannot read the files they queue.
+
+**Rollback:** remove the app from `PAPERLESS_APPS` and `PYTHONPATH`, restart.
+Documents and custom fields stay; the policy table stays in the database.
+
+The app uses internal Paperless APIs (`consume_file`, `DocumentMetadataOverrides`,
+`reflect_doclinks`, `paperless_mail.mail.get_mailbox`, `django-soft-delete`
+signals). Run the tests in `dev/` after every Paperless upgrade.
 
 ## Development
 

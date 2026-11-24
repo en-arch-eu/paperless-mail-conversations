@@ -5,6 +5,10 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-24
+
+First version, for Paperless-ngx 3.5.1.
+
 ### Added
 
 - Package skeleton (CI, release with `SHA256SUMS`, update script, dev compose).
