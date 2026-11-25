@@ -82,9 +82,11 @@ def parse_skipped(text: str | None) -> set[str]:
     return {t.lower() for t in (text or "").replace(",", " ").split() if len(t) == 64}
 
 
-def add_skipped(text: str | None, sha256: str) -> str:
-    """The field text with ``sha256`` added on its own line (unchanged if present)."""
+def add_skipped(text: str | None, sha256: str, note: str | None = None) -> str:
+    """The field text with ``sha256`` (and ``note`` after it) added on its own line
+    (unchanged if present)."""
     text = (text or "").rstrip()
     if sha256.lower() in parse_skipped(text):
         return text
-    return f"{text}\n{sha256.lower()}" if text else sha256.lower()
+    line = f"{sha256.lower()} {note}" if note else sha256.lower()
+    return f"{text}\n{line}" if text else line

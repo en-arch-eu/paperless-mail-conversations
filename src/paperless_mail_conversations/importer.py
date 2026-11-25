@@ -31,6 +31,7 @@ from .links import MAX_DEPTH, Kind, relation
 from .mail import Attachment, Mail, from_header_first, parse_mail
 from .plan import plan_attachments
 from .policy import Rule, Scope
+from .rejections import reason, rejected_for_good
 
 logger = logging.getLogger("paperless.mail_conversations")
 
@@ -176,7 +177,16 @@ def document_with_checksum(sha256: str) -> int | None:
     return doc.root_document_id or doc.pk
 
 
-def _consume(content: bytes, filename: str, overrides_kwargs: dict, then):
+TEMP_PREFIX = "mail-conversations-"
+
+
+def _temp_prefix(sha256: str) -> str:
+    """Start of the temporary file name: Paperless keeps it in the task record, so a
+    failed task can be matched to the content."""
+    return f"{TEMP_PREFIX}{sha256[:16]}-"
+
+
+def _consume(content: bytes, filename: str, overrides_kwargs: dict, then, sha256: str):
     """Queue ``consume_file`` for ``content``, chained with the task signature ``then``."""
     import pathvalidate
     from documents.data_models import ConsumableDocument, DocumentMetadataOverrides, DocumentSource
@@ -185,7 +195,7 @@ def _consume(content: bytes, filename: str, overrides_kwargs: dict, then):
     filename = pathvalidate.sanitize_filename(unicodedata.normalize("NFC", filename)) or "attachment"
     settings.SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
     # a file, not a directory: the consumer deletes the file and nothing is left behind
-    fd, name = tempfile.mkstemp(dir=settings.SCRATCH_DIR, prefix="mail-conversations-", suffix=Path(filename).suffix)
+    fd, name = tempfile.mkstemp(dir=settings.SCRATCH_DIR, prefix=_temp_prefix(sha256), suffix=Path(filename).suffix)
     with os.fdopen(fd, "wb") as f:
         f.write(content)
     path = Path(name)
@@ -271,6 +281,7 @@ def import_mail(raw: bytes, ctx: Context, source: Source = Source(), depth: int 
             "owner_id": ctx.owner_id,
         },
         mail_consumed.s(ctx=ctx, depth=depth, forwarded_by=forwarded_by),
+        sha,
     )
     logger.info("[mail-conversations] %s queued: %s", key, title)
     return None
@@ -344,19 +355,43 @@ def attach_file(mail_doc_id: int, att: Attachment, ctx: Context, conversation: s
         logger.info("[mail-conversations] #%s restored from the trash for #%s", trashed.pk, mail_doc_id)
         link_attachment(mail_doc_id, trashed.root_document_id or trashed.pk, conversation)
         return "restored"
+    filename = _attachment_filename(att)
+    why = rejection(att.sha256, filename)
+    if why:
+        note = " ".join(f"{filename}: odrzucony przez Paperless: {why}".split())[:300]
+        set_value(mail_doc_id, F.SKIPPED, F.add_skipped(get_value(mail_doc_id, F.SKIPPED), att.sha256, note))
+        logger.info("[mail-conversations] #%s: %s skipped, rejected by Paperless: %s", mail_doc_id, filename, why)
+        return f"skipped, rejected by Paperless: {why}"
     values: dict[FieldDef, object] = {F.ATTACHMENT: [mail_doc_id], F.FROM_ATTACHMENT: True}
     if conversation:
         values[F.CONVERSATION] = conversation
     _consume(
         att.content,
-        _attachment_filename(att),
+        filename,
         {
             "custom_fields": overrides_fields(values),
             "owner_id": ctx.owner_id,
         },
         attachment_consumed.s(mail_doc_id=mail_doc_id, conversation=conversation),
+        att.sha256,
     )
     return "queued"
+
+
+def rejection(sha256: str, filename: str) -> str | None:
+    """Why Paperless rejected this content for good, from its failed consume tasks
+    (newest first); ``None``: never failed, or worth another try."""
+    from documents.models import PaperlessTask
+
+    results = PaperlessTask.objects.filter(
+        task_type=PaperlessTask.TaskType.CONSUME_FILE,
+        status=PaperlessTask.Status.FAILURE,
+        input_data__filename__startswith=_temp_prefix(sha256),
+    ).order_by("-date_done").values_list("result_data", flat=True)
+    messages = [r.get("error_message") or "" for r in results if isinstance(r, dict) and "duplicate_of" not in r]
+    if messages and rejected_for_good(messages[0], len(messages), filename):
+        return reason(messages[0], filename)
+    return None
 
 
 def _attachment_filename(att: Attachment) -> str:

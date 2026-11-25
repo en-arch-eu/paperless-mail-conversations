@@ -5,6 +5,21 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-25
+
+### Changed
+
+- An attachment Paperless rejected for good is skipped instead of imported
+  again after every restart (0.1.3) or reconcile. The reason comes from the
+  failed consume task: an unsupported type (`application/encrypted`,
+  `application/javascript`), a page size error and the like at once, an
+  unknown error after the second failure; errors of a service (Tika,
+  Gotenberg, connection, time limit, database, disk) are always retried. The
+  SHA256 goes to `Mail: pominięte załączniki` with the file name and the
+  reason. The temporary file Paperless consumes is now named after the
+  content's SHA256 (`mail-conversations-<16 hex>-…`) to find its tasks;
+  attachments that failed before this version are tried once more.
+
 ## [0.1.3] - 2026-11-25
 
 ### Fixed
