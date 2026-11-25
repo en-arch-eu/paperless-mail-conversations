@@ -157,7 +157,13 @@ def sync_account(account, deadline: float | None = None) -> int:
 def sync_all() -> int:
     from paperless_mail.models import MailAccount
 
+    from .heal import heal
+
     deadline = time.monotonic() + TIME_BUDGET
+    try:
+        heal(deadline)  # first: the lost work is older than anything queued now
+    except Exception:
+        logger.exception("[mail-conversations] follow-up check failed")
     total = 0
     for account in MailAccount.objects.all():
         try:

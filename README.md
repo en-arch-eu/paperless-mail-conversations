@@ -20,6 +20,11 @@ not report problems with this app there.
 - Which attachments become documents is a policy stored in the database
   and can be re-applied to mails already imported (the `.eml` keeps every
   attachment).
+- After an app restart that empties Redis (the Celery queue lives there),
+  the next sync runs the follow-up of every mail added in the 48 hours
+  before again: attachments whose import was queued are imported, links
+  whose other side was queued are completed. The first sync after
+  installing or updating the app does the same.
 - Conversation providers are pluggable. Gmail (label `do-paperless`, thread
   id `X-GM-THRID`) comes first; servers without conversations import single
   marked mails.
@@ -52,7 +57,7 @@ Custom field names are in Polish (`Mail: od`, `Mail: załącznik`, ...); see
    On start a migration creates the attachment policy table with the default
    rules. Custom fields are created on first use.
 
-3. Check the log for `[mail-conversations] loaded, version 0.1.2`. From now on,
+3. Check the log for `[mail-conversations] loaded, version 0.1.3`. From now on,
    after every mail fetch, threads labelled `do-paperless` in the Gmail
    accounts configured in Paperless are imported (no mail rule needed).
 

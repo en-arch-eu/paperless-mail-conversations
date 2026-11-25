@@ -153,7 +153,10 @@ def add_links(doc_id: int, fd: FieldDef, target_ids: list[int]) -> None:
         inst = CustomFieldInstance.objects.filter(document_id=doc_id, field=cf).first()
         current = list(inst.value_document_ids or []) if inst else []
         wanted = current + [t for t in target_ids if t not in current]
-        reflect_doclinks(Document.objects.get(pk=doc_id), cf, wanted)  # the other side
+        # the other side, on documents not in the trash: their field instances are
+        # soft-deleted with them, so reflect_doclinks would create a second one and fail
+        live = set(Document.objects.filter(pk__in=wanted).values_list("pk", flat=True))
+        reflect_doclinks(Document.objects.get(pk=doc_id), cf, [t for t in wanted if t in live])
         if inst is None or wanted != current:
             CustomFieldInstance.objects.update_or_create(
                 document_id=doc_id, field=cf, defaults={"value_document_ids": wanted}

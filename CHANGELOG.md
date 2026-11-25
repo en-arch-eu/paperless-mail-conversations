@@ -5,6 +5,23 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-25
+
+### Fixed
+
+- An app restart that empties Redis took the queued work with it: attachment
+  imports and the tasks linking an attachment back to its mail. Mails stayed
+  without some attachments, and attachments pointed to a mail that did not
+  point back. The sync now notices that the cache was emptied (a key that
+  never expires is gone) and runs the follow-up of every mail added in the 48
+  hours before again; it only adds what is missing (attachments removed by
+  hand stay out) and continues in the next sync after 10 minutes.
+- Linking a mail whose attachment list holds a document in the trash failed
+  (`UNIQUE constraint failed` in Paperless' `reflect_doclinks`: the trashed
+  document's field instance is soft-deleted with it). Documents in the trash
+  are now left out of the other side of a link; their own links come back
+  with them when restored.
+
 ## [0.1.2] - 2026-11-24
 
 ### Fixed
