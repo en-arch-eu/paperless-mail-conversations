@@ -19,7 +19,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 from . import fields as F
-from .importer import Context, Source, attach_file, custom_field, find_documents, get_value, import_mail
+from .importer import Context, Source, attach_file, checksums, custom_field, find_documents, get_value, import_mail
 from .mail import parse_mail
 from .plan import Plan, plan_attachments
 from .policy import Rule, Scope
@@ -81,7 +81,7 @@ def reconcile_mail(doc_id: int, rules: list[Rule], pattern: str | None = None, d
     ctx, plan, _ = mail_plan(doc, rules)
     conversation = get_value(doc_id, F.CONVERSATION)
     linked = {d.pk: d for d in Document.objects.filter(pk__in=get_value(doc_id, F.ATTACHMENT) or [])}
-    linked_sha = {d.checksum for d in linked.values()}
+    linked_sha = {c for d in linked.values() for c in checksums(d)}
     changes = []
 
     for att in plan.files:
@@ -100,14 +100,14 @@ def reconcile_mail(doc_id: int, rules: list[Rule], pattern: str | None = None, d
             changes.append(f"#{doc_id}: attached mail {inner.subject!r}: queued")
 
     for d in linked.values():
-        if d.checksum in plan.sha256s or not get_value(d.pk, F.FROM_ATTACHMENT):
+        if checksums(d) & set(plan.sha256s) or not get_value(d.pk, F.FROM_ATTACHMENT):
             continue
         if not _matches(pattern, d.original_filename):
             continue
         others = [m for m in get_value(d.pk, F.ATTACHMENT) or [] if m != doc_id]
         needed_by = [
             m.pk for m in Document.objects.filter(pk__in=others)
-            if get_value(m.pk, F.KEY) and d.checksum in mail_plan(m, rules)[1].sha256s
+            if get_value(m.pk, F.KEY) and checksums(d) & set(mail_plan(m, rules)[1].sha256s)
         ]
         if needed_by:
             changes.append(f"#{doc_id}: #{d.pk} {d.original_filename}: kept, needed by #{needed_by[0]}")

@@ -5,6 +5,16 @@ versions: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-25
+
+### Fixed
+
+- An attachment equal to the archive copy of a document (not to its original)
+  was queued for import every time, refused by Paperless as a duplicate and
+  only then linked. It is now linked at once: a document matches by its
+  original or its archive copy, as in Paperless' own duplicate check; also
+  for documents in the trash and in `mail_conversations_reconcile`.
+
 ## [0.1.4] - 2026-11-25
 
 ### Changed

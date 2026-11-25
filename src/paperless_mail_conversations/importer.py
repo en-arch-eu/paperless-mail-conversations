@@ -167,11 +167,25 @@ def add_links(doc_id: int, fd: FieldDef, target_ids: list[int]) -> None:
 # --- documents -------------------------------------------------------------
 
 
+def same_content(manager, sha256: str):
+    """The first document of ``manager`` whose original, or else archive copy, has this
+    SHA256 (Paperless refuses a file matching either as a duplicate)."""
+    return (
+        manager.filter(checksum=sha256).order_by("pk").first()
+        or manager.filter(archive_checksum=sha256).order_by("pk").first()
+    )
+
+
+def checksums(doc) -> set[str]:
+    """SHA256 of the original and of the archive copy."""
+    return {c for c in (doc.checksum, doc.archive_checksum) if c}
+
+
 def document_with_checksum(sha256: str) -> int | None:
-    """A document (not in the trash) whose original has this SHA256; versions resolve to their root."""
+    """A document (not in the trash) with this content; versions resolve to their root."""
     from documents.models import Document
 
-    doc = Document.objects.filter(checksum=sha256).order_by("pk").first()
+    doc = same_content(Document.objects, sha256)
     if doc is None:
         return None
     return doc.root_document_id or doc.pk
@@ -349,7 +363,7 @@ def attach_file(mail_doc_id: int, att: Attachment, ctx: Context, conversation: s
     if existing:
         link_attachment(mail_doc_id, existing, conversation)
         return "linked"
-    trashed = Document.deleted_objects.filter(checksum=att.sha256).order_by("pk").first()
+    trashed = same_content(Document.deleted_objects, att.sha256)
     if trashed is not None:
         trashed.restore(strict=False)
         logger.info("[mail-conversations] #%s restored from the trash for #%s", trashed.pk, mail_doc_id)

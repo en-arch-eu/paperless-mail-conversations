@@ -15,7 +15,8 @@ not report problems with this app there.
   reply-to, sent at, direction, account, `Message-ID`, `In-Reply-To`,
   conversation, key and a web link.
 - Attachments become documents linked to the mail with a document link
-  field. An attachment already in Paperless (same SHA256) is only linked.
+  field. An attachment already in Paperless (same SHA256 as a document's original
+  or its archive copy) is only linked.
 - Replies and forwards are linked to the mail they answer or forward.
 - Which attachments become documents is a policy stored in the database
   and can be re-applied to mails already imported (the `.eml` keeps every
@@ -63,7 +64,7 @@ Custom field names are in Polish (`Mail: od`, `Mail: załącznik`, ...); see
    On start a migration creates the attachment policy table with the default
    rules. Custom fields are created on first use.
 
-3. Check the log for `[mail-conversations] loaded, version 0.1.4`. From now on,
+3. Check the log for `[mail-conversations] loaded, version 0.1.5`. From now on,
    after every mail fetch, threads labelled `do-paperless` in the Gmail
    accounts configured in Paperless are imported (no mail rule needed).
 
